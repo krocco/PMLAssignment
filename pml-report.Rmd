@@ -5,18 +5,99 @@ date: "March 18, 2016"
 output: html_document
 ---
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+#Executive Summary
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+This document is submitted as Prediction Assignment Writeup for the Practical Machine Learning Course offered by Coursera.
 
-```{r}
-summary(cars)
+Instructor provided data are stored in the working directory and are used to build a machine learning algorithm which predicts the form (or class) of dumbell biceps curl performed based on a wide range of accelerometer inputs. (Class can be A: according to the specification of the exercise, or B through E: each a different, common mistake)
+
+Ultimately, a Random Forest model is selected due to its high Expected Accuracy.
+
+For more detailed information on the dataset, see: 
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+This report will step through the chronology of the analysis. 
+
+#1. Read Data and Look at Format
+
+The training CSV file will be used to create and validate the model, while the testing CSV file is used to create output for the automatically graded quiz.
+```{r load libraries, echo=FALSE}
+library(caret, quietly=TRUE, warn.conflicts=FALSE); library(AppliedPredictiveModeling, quietly=TRUE, warn.conflicts=FALSE); library(ggplot2, quietly=TRUE, warn.conflicts=FALSE)
+library(randomForest, quietly=TRUE, warn.conflicts=FALSE)
 ```
 
-You can also embed plots, for example:
-
-```{r, echo=FALSE}
-plot(cars)
+```{r Read Data}
+data <- read.csv("pml-training.csv", header = TRUE)
+quiz <- read.csv("pml-testing.csv", header = TRUE)
+dim(data) ; dim(quiz)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+The loaded data includes timestamps for all data points, as well as many columns of summary (min, max, avg, etc.) values which are empty (NA) at other time stamps. 
+The raw data from accelerometers and gyros are continuous.
+As the testing file contains just 20 rows (and 20 unique Class values), it is initially expected that the summarizing values are those upon which the model should be based. However, upon closer inspection, it is revealed that raw accelerometer/gyro data are the only values which appear in the testing file.
+
+```{r Show Testing}
+# Print the head of testing data with ID variables, and those defining arm pitch
+data[1:5, c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", names(data)[grep("pitch_arm$",names(data))], "classe")]
+
+```
+
+#2. Cleaning Data
+
+Looking at the testing data (not shown here), the summary variables are all NA, only the raw accelerations are included. As such, the training data can be subset, eliminating all summary variables. Additionally, the first 7 columns of the data are irrelevant factor variables, so they can be removed at the same time.
+
+```{r Subset Training}
+emptyColumns <- (colSums(is.na(quiz)) > 0)
+subsetData <- data[,!emptyColumns]
+subsetData <- subsetData[,-(1:7)]
+```
+
+We can now split the training file into a training set and a validation set (the test set will be used as a final output).
+
+```{r Partition}
+set.seed(111)
+inTrain <- createDataPartition(subsetData$classe, p=3/4)[[1]]
+training <- subsetData[ inTrain,]
+testing  <- subsetData[-inTrain,]
+```
+
+
+#3. Build the Model
+
+##Random Forest
+
+Build a random forest model on the subset data.
+
+``` {r Random Forest}
+set.seed(222)
+rf <- randomForest(classe ~ ., data=training, ntree=501, proximity=TRUE, keep.forest=TRUE)
+```
+
+#4. Model Performance Analysis / Validation
+``` {r}
+rf
+```
+
+###OOB estimate of error rate is less than 1%.
+
+``` {r}
+plot(rf, log = "y",main = "OOB error estimate per number of Trees")
+```
+
+##Predict Test Set Variables and Check Accuracy
+
+``` {r Check Test}
+confusionMatrix(predict(rf, newdata=testing),testing$classe)
+```
+
+### Accuracy is >99%
+
+#5. Course Quiz
+
+Predict the Values Provided inthe Quiz Data
+
+``` {r Quiz}
+prediction <- predict(rf, quiz)
+prediction
+```
+
